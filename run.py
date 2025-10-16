@@ -133,7 +133,6 @@ class Grid():
         y_inc = 0 if (index[1] + 1) >=  np.shape(self.grid)[1] else 1
         y_dec = 0 if (index[1] - 1) <   0 else 1
 
-        print(x_inc,x_dec,y_inc,y_dec)
         if x_inc:
             n.append([index[0]+1,index[1]])
         if x_dec:
@@ -152,10 +151,119 @@ class Grid():
             n.append([index[0]-1,index[1]+1])
             
         return n
-    
+
     def codeA_part2_Astar(self,start,goal):
         """
         Offline A* algorithm implementation
+
+        Produces a path from start to goal
+
+        PARAMETERS:
+        start (list): x,y coordinates of start position
+        goal (list): x,y coordinates of goal position
+
+        OUTPUTS:
+        self.path (list): list of cells along path from start to finish including start and goal cells
+        """
+        # save start and end position, convert to row col indexes
+        self.start = start
+        self.goal = goal
+        self.start_index = self.crdnt_to_idx(start)
+        self.goal_index = self.crdnt_to_idx(goal)
+
+        # if printing is enabled, print
+        if self.prt:
+            print(f'start {np.shape(start)}:\n{start}\n')
+            print(f'goal {np.shape(goal)}:\n{goal}\n')
+            print(f'start_index {np.shape(self.start_index)}:\n{self.start_index}\n')
+            print(f'goal_index {np.shape(self.goal_index)}:\n{self.goal_index}\n')
+
+        # instantiate open set with start row col index as part of open set
+        open_set = [self.start_index]
+        open_set_id = [0]
+        # initialize total cost array and list for nodes in path
+        f_list = []
+        node_list = []
+        node_id = []
+        node_parent_id = []
+        num = 0
+        # loop
+        while(1):
+            # loop through open set
+            for cell in open_set:
+                # calculate heuristic (distance function in grid plane)
+                h = np.sqrt(np.square(cell[0]-self.goal_index[0])+np.square(cell[1]-self.goal_index[1])) # this one works better
+                # true cost, provided by assignment
+                if cell in self.occupied_cells:
+                    g = 1000  # if it is an occupied cell
+                else:
+                    g = 1
+
+                # calculate total cost and save
+                f_list.append(g + h)
+            
+            # find lowest cost point
+            min_idx = np.argmin(f_list)
+
+            # clear f_list
+            f_list = []
+
+            # check if goal is reached
+            if open_set[min_idx][0] == self.goal_index[0] and open_set[min_idx][1] == self.goal_index[1]:
+                # if np.isclose(open_set[min_idx][0],self.goal_index[0]) and np.isclose(open_set[min_idx][1] , self.goal_index[1]):
+                node_list.append(open_set.pop(min_idx))
+                node_parent_id.append(open_set_id.pop(min_idx))
+                node_id.append(num)
+                break
+
+            if len(open_set_id) != len(open_set) or len(node_id) != len(node_list) or len(node_parent_id) != len(node_id):
+                raise
+        
+            # get neighbors of lowest cost cell
+            n = self.get_neighbors(open_set[min_idx])
+
+            # remove lowest cost cell from open set
+            node_list.append(open_set.pop(min_idx))
+            node_parent_id.append(open_set_id.pop(min_idx))
+            node_id.append(num)
+
+
+
+            # add neighbors to open set, if they are not in already
+            for p in n:
+                # check and make sure it is not already in the open set or that it is in the path
+                if p not in open_set and p not in node_list:
+                    # add to open set
+                    open_set.append(p)
+                    open_set_id.append(num)
+
+            # num increase
+            num += 1
+            
+            # visualize at every step if you would like (optional)
+            # self.visualize_path()
+
+      
+        print(node_list)
+        print(node_id)
+        print(node_parent_id)
+
+        # save path to object
+        self.plan = [node_list[-1]]
+        next_up_id = node_parent_id[-1]
+
+        # find the best path
+        while(1):
+            up_id = node_id.index(next_up_id)
+            self.plan.append(node_list[up_id])
+            print(up_id)
+            if up_id == 0:
+                break
+            next_up_id = node_parent_id[up_id]
+
+    def codeA_part4_Astar(self,start,goal):
+        """
+        Real time A* algorithm implementation
 
         Produces a path from start to goal
 
@@ -232,6 +340,8 @@ class Grid():
 
         # save path to object
         self.plan = path_list
+
+
 
     def visualize_grid(self):
         """
@@ -317,26 +427,26 @@ def main():
     g1 = Grid([-2,5],[-6,6],1)
     # g1.visualize_grid() 
 
-    g1.codeA_part2_Astar(start=[0.5,-1.5],goal=[0.5,1.5])
-    g1.visualize_path(name='plot_1')
+    # g1.codeA_part4_Astar(start=[0.5,-1.5],goal=[0.5,1.5])
+    # g1.visualize_path(name='plot_1')
 
-    g1.codeA_part2_Astar(start=[4.5,3.5],goal=[4.5,-1.5])
-    g1.visualize_path(name='plot_2')
+    # g1.codeA_part4_Astar(start=[4.5,3.5],goal=[4.5,-1.5])
+    # g1.visualize_path(name='plot_2')
 
-    g1.codeA_part2_Astar(start=[-0.5,5.5],goal=[1.5,-3.5])
-    g1.visualize_path(name='plot_3')
+    # g1.codeA_part4_Astar(start=[-0.5,5.5],goal=[1.5,-3.5])
+    # g1.visualize_path(name='plot_3')
 
     g2 = Grid([-2,5],[-6,6],.1)
     # g2.visualize_grid() 
 
-    g2.codeA_part2_Astar(start=[2.45,-3.55],goal=[0.95,1.55])
-    g2.visualize_path(name='plot_4')
+    # g2.codeA_part2_Astar(start=[2.45,-3.55],goal=[0.95,1.55])
+    # g2.visualize_path(name='plot_4')
 
     g2.codeA_part2_Astar(start=[4.95,0.05],goal=[2.45,0.25])
     g2.visualize_path(name='plot_5')
 
-    g2.codeA_part2_Astar(start=[-0.55,1.45],goal=[1.95,-3.95])
-    g2.visualize_path(name='plot_6')
+    # g2.codeA_part2_Astar(start=[-0.55,1.45],goal=[1.95,-3.95])
+    # g2.visualize_path(name='plot_6')
     
 if __name__ == '__main__':
     main()
