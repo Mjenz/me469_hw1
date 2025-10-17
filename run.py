@@ -152,7 +152,7 @@ class Grid():
             
         return n
 
-    def codeA_part2_Astar(self,start,goal):
+    def codeA_part2_Offline(self,start,goal):
         """
         Offline A* algorithm implementation
 
@@ -227,8 +227,6 @@ class Grid():
             node_parent_id.append(open_set_id.pop(min_idx))
             node_id.append(num)
 
-
-
             # add neighbors to open set, if they are not in already
             for p in n:
                 # check and make sure it is not already in the open set or that it is in the path
@@ -243,11 +241,6 @@ class Grid():
             # visualize at every step if you would like (optional)
             # self.visualize_path()
 
-      
-        print(node_list)
-        print(node_id)
-        print(node_parent_id)
-
         # save path to object
         self.plan = [node_list[-1]]
         next_up_id = node_parent_id[-1]
@@ -255,15 +248,14 @@ class Grid():
         # find the best path
         while(1):
             up_id = node_id.index(next_up_id)
-            self.plan.append(node_list[up_id])
-            print(up_id)
+            self.plan.append(node_list[up_id]) # add good path to plan list
             if up_id == 0:
                 break
             next_up_id = node_parent_id[up_id]
 
-    def codeA_part4_Astar(self,start,goal):
+    def codeA_part4_Online(self,start,goal):
         """
-        Real time A* algorithm implementation
+        Online A* algorithm implementation
 
         Produces a path from start to goal
 
@@ -343,7 +335,7 @@ class Grid():
 
 
 
-    def visualize_grid(self):
+    def visualize_grid(self,name):
         """
         Visualize grid with obstacles
         """
@@ -366,9 +358,10 @@ class Grid():
 
         ax.set_xlabel('x [m]')
         ax.set_ylabel('y [m]')
-        ax.set_title('Occupancy Grid Visualization')
-        fig.tight_layout()
-        fig.show()    
+        ax.set_title(name)
+        fig.set_size_inches(5,7)
+
+        plt.show()    
 
     def visualize_path(self,name):
         """
@@ -420,33 +413,43 @@ class Grid():
         ax.set_title('Occupancy Grid Visualization')
         ax.legend()
         plt.savefig(name)
+        fig.set_size_inches(5,7)
         plt.show()
 
 
 def main():
     g1 = Grid([-2,5],[-6,6],1)
-    # g1.visualize_grid() 
+    g1.visualize_grid(name='Empty Grid') 
 
-    # g1.codeA_part4_Astar(start=[0.5,-1.5],goal=[0.5,1.5])
-    # g1.visualize_path(name='plot_1')
+    g1.codeA_part2_Offline(start=[0.5,-1.5],goal=[0.5,1.5])
+    g1.visualize_path(name='Code A part 3 plot_1')
 
-    # g1.codeA_part4_Astar(start=[4.5,3.5],goal=[4.5,-1.5])
-    # g1.visualize_path(name='plot_2')
+    g1.codeA_part2_Offline(start=[4.5,3.5],goal=[4.5,-1.5])
+    g1.visualize_path(name='Code A part 3 plot_2')
 
-    # g1.codeA_part4_Astar(start=[-0.5,5.5],goal=[1.5,-3.5])
-    # g1.visualize_path(name='plot_3')
+    g1.codeA_part2_Offline(start=[-0.5,5.5],goal=[1.5,-3.5])
+    g1.visualize_path(name='Code A part 3 plot_3')
+
+    g1.codeA_part4_Online(start=[0.5,-1.5],goal=[0.5,1.5])
+    g1.visualize_path(name='Code A part 5 plot_1')
+
+    g1.codeA_part4_Online(start=[4.5,3.5],goal=[4.5,-1.5])
+    g1.visualize_path(name='Code A part 5 plot_2')
+
+    g1.codeA_part4_Online(start=[-0.5,5.5],goal=[1.5,-3.5])
+    g1.visualize_path(name='Code A part 5 plot_3')
 
     g2 = Grid([-2,5],[-6,6],.1)
-    # g2.visualize_grid() 
+    g2.visualize_grid(name='Empty, higher res Grid') 
 
-    # g2.codeA_part2_Astar(start=[2.45,-3.55],goal=[0.95,1.55])
-    # g2.visualize_path(name='plot_4')
+    g2.codeA_part4_Online(start=[2.45,-3.55],goal=[0.95,-1.55])
+    g2.visualize_path(name='Code A part 7 plot_1')
 
-    g2.codeA_part2_Astar(start=[4.95,0.05],goal=[2.45,0.25])
-    g2.visualize_path(name='plot_5')
+    g2.codeA_part4_Online(start=[4.95,-0.05],goal=[2.45, 0.25])
+    g2.visualize_path(name='Code A part 7 plot_2')
 
-    # g2.codeA_part2_Astar(start=[-0.55,1.45],goal=[1.95,-3.95])
-    # g2.visualize_path(name='plot_6')
+    g2.codeA_part4_Online(start=[00.55, 1.45],goal=[1.95, 3.95])
+    g2.visualize_path(name='Code A part 7 plot_3')
     
 if __name__ == '__main__':
     main()
