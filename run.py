@@ -1,6 +1,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
+from enum import auto, Enum
+class State(Enum):
+    LEFT = auto(),
+    RIGHT = auto(),
+    FORWARD = auto(),
+    STOPPED = auto()
 
 class Grid():
     """
@@ -25,6 +31,22 @@ class Grid():
         self.y_max = y_range[1]
         self.scale = scale
         self.prt = pt
+        
+        # initialize velocities and configuration
+        self.v_vel = 0.0
+        self.omega_vel = 0.0
+        self.x = 0.0
+        self.y = 0.0
+        self.theta = -np.pi/2
+        self.dt = 0.1
+
+        # initiailze maximum accelerations and velocities
+        self.v_dot_max = 0.288
+        self.omega_dot_max = 5.579
+        self.v_vel_max = 10.0
+        self.v_vel_min = 0.0
+        self.omega_vel_max = 1.0 
+        self.omega_vel_min = -self.omega_vel_max 
         
         # intialize the grid of zeros
         self.grid = np.zeros([(x_range[1]-x_range[0]) * int(1/self.scale),((y_range[1]-y_range[0]) * int(1/self.scale))])
@@ -333,8 +355,6 @@ class Grid():
         # save path to object
         self.plan = path_list
 
-
-
     def visualize_grid(self,name):
         """
         Visualize grid with obstacles
@@ -416,40 +436,244 @@ class Grid():
         fig.set_size_inches(5,7)
         plt.show()
 
+        ########### CODE B ###################
 
+    def codeB_prt8_controller(self, goal, position, velocity):
+        # unpack parameters
+        goal_x = goal[0]
+        goal_y = goal[1]
+        actual_x = position[0]
+        actual_y = position[1]
+        actual_theta = position[2]
+        v_vel = velocity[0]
+        omega_vel = velocity[1]
+
+        distance_error = np.sqrt((goal_x - actual_x)**2 + (goal_y - actual_y)**2)
+        heading_error = np.atan2((goal_y - actual_y),(goal_x - actual_x)) - actual_theta
+
+        if abs(heading_error) > 3.14:
+            heading_error = (heading_error + np.pi) % (2 * np.pi) - np.pi
+
+        # controller
+        if abs(heading_error) < 0.1:
+            ideal_v_vel = State.FORWARD
+        else:
+            ideal_v_vel = State.STOPPED
+
+
+        if heading_error > 0.0 and abs(heading_error) > 0.1:
+            ideal_omega_vel = State.LEFT
+        else:
+            ideal_omega_vel = State.RIGHT
+        
+        if ideal_v_vel == State.FORWARD:
+            v_vel += self.v_dot_max * self.dt
+        elif ideal_v_vel == State.STOPPED:
+            v_vel += -self.v_dot_max * self.dt
+        
+        if ideal_omega_vel == State.LEFT:
+            omega_vel += self.omega_dot_max * self.dt
+        elif ideal_omega_vel == State.RIGHT:
+            omega_vel += -self.omega_dot_max * self.dt
+
+        # clamping
+        if v_vel > self.v_vel_max:
+            v_vel = self.v_vel_max
+        elif v_vel < self.v_vel_min:
+            v_vel = self.v_vel_min
+
+        if omega_vel > self.omega_vel_max:
+            omega_vel = self.omega_vel_max
+        elif omega_vel < self.omega_vel_min:
+            omega_vel = self.omega_vel_min
+
+        return v_vel, omega_vel
+
+    def codeB_prt8_state_transition(self, position, velocity):
+        # unpack
+        actual_x = position[0]
+        actual_y = position[1]
+        actual_theta = position[2]
+        v_vel = velocity[0]
+        omega_vel = velocity[1]
+
+        # calculate next configuration
+        actual_x += np.cos(actual_theta) * (v_vel * self.dt)
+        actual_y += np.sin(actual_theta) * (v_vel * self.dt)
+        actual_theta += omega_vel * self.dt
+
+        # add noise
+        actual_x += (0.1 * self.scale) * np.random.random() * np.random.choice([-1, 1])
+        actual_y += (0.1 * self.scale) * np.random.random() * np.random.choice([-1, 1])
+        actual_theta += 0.1 * np.random.random() * np.random.choice([-1, 1])
+
+        return actual_x, actual_y, actual_theta
+    
+    def codeB_prt8_simulator(self):
+        # initialize starting position and velocities
+        self.x = self.start[0]
+        self.y = self.start[1]
+        self.theta = -np.pi/2
+        self.v_vel = 0.0
+        self.omega_vel = 0.0
+
+        self.config_hist = [[self.x, self.y, self.theta]]
+        self.vel_hist = [[self.v_vel, self.omega_vel]]
+        self.goal_hist = []
+
+        for cell in self.plan:
+            while(1):
+                # transform cell to coordinates, then center it in the cell
+                goal = self.idx_to_crdnt(cell)
+                goal[0] += self.scale/2
+                goal[1] += self.scale/2
+
+                # run controller, get new velocities
+                self.v_vel, self.omega_vel = self.codeB_prt8_controller(goal, [self.x, self.y, self.theta], [self.v_vel, self.omega_vel])
+
+                # estimate new position (with noise)
+                self.x, self.y, self.theta = self.codeB_prt8_state_transition([self.x, self.y, self.theta], [self.v_vel, self.omega_vel])
+
+                # calculate distance from goal
+                distance_error = np.sqrt((goal[0] - self.x)**2 + (goal[1] - self.y)**2)
+
+                # save history
+                self.config_hist.append([self.x, self.y, self.theta])
+                self.vel_hist.append([self.v_vel, self.omega_vel])
+
+                # check if achieved goal
+                if distance_error < 0.01:
+                    break
+            
+            self.goal_hist.append(goal)
+
+        # convert to numpy array
+        self.config_hist = np.array(self.config_hist)
+        self.vel_hist = np.array(self.vel_hist)
+        self.goal_hist = np.array(self.goal_hist)
+
+        if self.prt:    
+            print(f'config_hist {np.shape(self.config_hist)}\n')
+            print(f'vel_hist {np.shape(self.vel_hist)}\n')
+            print(f'goal_hist {np.shape(self.goal_hist)}\n')
+        
+    def visualize_path_and_simulation(self,name):
+        """
+        Visualize grid with obstacles, path, and start and finish cells marked.
+        Add the simulated robot path on top.
+        """
+        # create points for plotting edges
+        lin_x = np.linspace(self.x_min,self.x_max,10)
+        lin_y = np.linspace(self.y_min,self.y_max,10)
+
+        # create figure
+        fig, ax = plt.subplots(figsize=[7,12])
+        
+        # draw lines
+        for r in self.row_label:
+            x = r * np.ones([10])
+            ax.plot(x,lin_y,'-k',linewidth=0.5)
+
+        for c in self.col_label:
+            y = c * np.ones([10])
+            ax.plot(lin_x,y,'-k',linewidth=0.5)
+
+        # draw occupied cells
+        for cell in self.occupied_cells:
+            ################### https://www.geeksforgeeks.org/python/how-to-draw-shapes-in-matplotlib-with-python/ ############
+            rect = Rectangle([self.row_label[cell[0]],self.col_label[cell[1]]],self.scale,self.scale,edgecolor='black',facecolor='black')
+            ax.add_patch(rect)
+        # again once for the legend label
+        rect = Rectangle([self.row_label[cell[0]],self.col_label[cell[1]]],self.scale,self.scale,edgecolor='black',facecolor='black',label='obstacle')
+        ax.add_patch(rect)
+
+        # draw path cells
+        for cell in self.plan:
+            rect = Rectangle([self.row_label[cell[0]],self.col_label[cell[1]]],self.scale,self.scale,edgecolor='red',facecolor='red')
+            ax.add_patch(rect)
+        # again once for the legend label
+        rect = Rectangle([self.row_label[cell[0]],self.col_label[cell[1]]],self.scale,self.scale,edgecolor='red',facecolor='red',label='path')
+        ax.add_patch(rect)
+
+        # draw goal cell 
+        rect = Rectangle(self.idx_to_crdnt(self.goal_index),self.scale,self.scale,edgecolor='yellow',facecolor='yellow',label='goal')
+        ax.add_patch(rect)
+
+        # draw start cell
+        rect = Rectangle(self.idx_to_crdnt(self.start_index),self.scale,self.scale,edgecolor='green',facecolor='green',label='start')
+        ax.add_patch(rect)
+
+        # draw the robot path
+        ax.plot(self.config_hist[:,0], self.config_hist[:,1],'m-',linewidth=5.0,label='sim_robot')
+        
+        # draw the robot headings along its path
+        decimation_factor = int(np.shape(self.config_hist)[0]/100)          # add arrows only for each one thousand points
+        for ii in range(0,np.shape(self.config_hist)[0],decimation_factor):  # calculate arrow direction
+            dx = .1 * np.cos(self.config_hist[ii,2])
+            dy = .1 * np.sin(self.config_hist[ii,2])
+            plt.arrow(self.config_hist[ii,0], self.config_hist[ii,1], dx, dy, head_width=0.035, head_length=0.05, fc='magenta', ec='black')
+        
+        # fit graph to area of path
+        ax.set_xlim(min(self.config_hist[:,0])-self.scale*2,max(self.config_hist[:,0])+self.scale*2)
+        ax.set_ylim(min(self.config_hist[:,1])-self.scale*2,max(self.config_hist[:,1])+self.scale*2)
+        
+        ax.set_xlabel('x [m]')
+        ax.set_ylabel('y [m]')
+        ax.set_title('Occupancy Grid Visualization')
+
+        ax.legend()
+
+        plt.savefig(name)
+        fig.set_size_inches(5,7)
+
+        plt.show()
 def main():
-    g1 = Grid([-2,5],[-6,6],1)
-    g1.visualize_grid(name='Empty Grid') 
+    # g1 = Grid([-2,5],[-6,6],1)
+    # g1.visualize_grid(name='Empty Grid') 
 
-    g1.codeA_part2_Offline(start=[0.5,-1.5],goal=[0.5,1.5])
-    g1.visualize_path(name='Code A part 3 plot_1')
+    # g1.codeA_part2_Offline(start=[0.5,-1.5],goal=[0.5,1.5])
+    # g1.visualize_path(name='Code A part 3 plot_1')
 
-    g1.codeA_part2_Offline(start=[4.5,3.5],goal=[4.5,-1.5])
-    g1.visualize_path(name='Code A part 3 plot_2')
+    # g1.codeA_part2_Offline(start=[4.5,3.5],goal=[4.5,-1.5])
+    # g1.visualize_path(name='Code A part 3 plot_2')
 
-    g1.codeA_part2_Offline(start=[-0.5,5.5],goal=[1.5,-3.5])
-    g1.visualize_path(name='Code A part 3 plot_3')
+    # g1.codeA_part2_Offline(start=[-0.5,5.5],goal=[1.5,-3.5])
+    # g1.visualize_path(name='Code A part 3 plot_3')
 
-    g1.codeA_part4_Online(start=[0.5,-1.5],goal=[0.5,1.5])
-    g1.visualize_path(name='Code A part 5 plot_1')
+    # g1.codeA_part4_Online(start=[0.5,-1.5],goal=[0.5,1.5])
+    # g1.visualize_path(name='Code A part 5 plot_1')
 
-    g1.codeA_part4_Online(start=[4.5,3.5],goal=[4.5,-1.5])
-    g1.visualize_path(name='Code A part 5 plot_2')
+    # g1.codeA_part4_Online(start=[4.5,3.5],goal=[4.5,-1.5])
+    # g1.visualize_path(name='Code A part 5 plot_2')
 
-    g1.codeA_part4_Online(start=[-0.5,5.5],goal=[1.5,-3.5])
-    g1.visualize_path(name='Code A part 5 plot_3')
+    # g1.codeA_part4_Online(start=[-0.5,5.5],goal=[1.5,-3.5])
+    # g1.visualize_path(name='Code A part 5 plot_3')
 
-    g2 = Grid([-2,5],[-6,6],.1)
-    g2.visualize_grid(name='Empty, higher res Grid') 
+    # g2 = Grid([-2,5],[-6,6],.1)
+    # g2.visualize_grid(name='Empty, higher res Grid') 
 
-    g2.codeA_part4_Online(start=[2.45,-3.55],goal=[0.95,-1.55])
-    g2.visualize_path(name='Code A part 7 plot_1')
+    # g2.codeA_part4_Online(start=[2.45,-3.55],goal=[0.95,-1.55])
+    # g2.visualize_path(name='Code A part 7 plot_1')
 
-    g2.codeA_part4_Online(start=[4.95,-0.05],goal=[2.45, 0.25])
-    g2.visualize_path(name='Code A part 7 plot_2')
+    # g2.codeA_part4_Online(start=[4.95,-0.05],goal=[2.45, 0.25])
+    # g2.visualize_path(name='Code A part 7 plot_2')
 
-    g2.codeA_part4_Online(start=[00.55, 1.45],goal=[1.95, 3.95])
-    g2.visualize_path(name='Code A part 7 plot_3')
+    # g2.codeA_part4_Online(start=[0.55, 1.45],goal=[1.95, 3.95])
+    # g2.visualize_path(name='Code A part 7 plot_3')
+
+    g3 = Grid([-2,5],[-6,6],.1)
+
+    g3.codeA_part4_Online(start=[2.45,-3.55],goal=[0.95,-1.55])
+    g3.codeB_prt8_simulator()
+    g3.visualize_path_and_simulation(name='Code B part 9 plot_1')
+
+    g3.codeA_part4_Online(start=[4.95,-0.05],goal=[2.45, 0.25])
+    g3.codeB_prt8_simulator()
+    g3.visualize_path_and_simulation(name='Code B part 9 plot_2')
+
+    g3.codeA_part4_Online(start=[0.55, 1.45],goal=[1.95, 3.95])
+    g3.codeB_prt8_simulator()
+    g3.visualize_path_and_simulation(name='Code B part 9 plot_3')
     
 if __name__ == '__main__':
     main()
