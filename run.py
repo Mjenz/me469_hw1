@@ -470,13 +470,10 @@ class Grid():
         
         # zoom in figure if using smaller scale
         if self.scale == 0.1:
-            print("hihi")
             # fit graph to area of path
             corr = np.array([self.idx_to_crdnt(cell) for cell in self.plan])
-            print(corr)
             xlim = np.array([min(corr[:,0])-self.scale*2,max(corr[:,0])+self.scale*2])
             ylim = np.array([min(corr[:,1])-self.scale*2,max(corr[:,1])+self.scale*2])
-            print(xlim,ylim)
             w = (xlim[1]-xlim[0])
             l = (ylim[1]-ylim[0])
             ratio = w/l
@@ -576,7 +573,6 @@ class Grid():
         # calculate distance and heading error from current to goal point
         distance_error = np.sqrt((goal_x - actual_x)**2 + (goal_y - actual_y)**2)
         heading_error = np.atan2((goal_y - actual_y),(goal_x - actual_x)) - actual_theta
-
         # wrap angles
         if abs(heading_error) > 3.14:
             heading_error = (heading_error + np.pi) % (2 * np.pi) - np.pi
@@ -866,7 +862,8 @@ class Grid():
         # initialize total cost array and list for nodes in path
         f_list = []
         path_list = []
-
+        count = 0
+        copy_bool = False
         # loop
         while(1):
             # loop through open set
@@ -894,6 +891,34 @@ class Grid():
             # check if goal is reached
             if open_set[min_idx][0] == self.goal_index[0] and open_set[min_idx][1] == self.goal_index[1]:
                 path_list.append(open_set.pop(min_idx))
+                
+                # CHECK FOR CORNER COLLISSIONS because we can only see the cells next to us
+
+                # index difference
+                copy = path_list[-1].copy()
+                idx_dif = np.array(path_list[-1]) - np.array(self.crdnt_to_idx([self.x,self.y]))
+                # check if move is diagonal
+                if idx_dif[0] != 0 or idx_dif[1] != 0:
+                    # if it is diagonal, check if there are nearby obstacles that we could clip
+                    neighbors, occupied = self.find_if_cardinal_neighbors_occupied(self.crdnt_to_idx([self.x,self.y]))  # check if neighbors are occupied
+                    for ii in range(len(occupied)):
+                        if occupied[ii] == 1:
+                            dif = np.array((neighbors[ii])) - np.array(self.crdnt_to_idx([self.x,self.y]))
+                            # if any neighboring obstacles are next to this diagonal path, we need to move around them!
+                            if idx_dif[0] == dif[0]:
+                                # add a new temporary goal point to get around the obstacle
+                                path_list[-1][0] = path_list[-1][0] + int(-dif[0] * self.scale)
+                                copy_bool = True
+                            # if any neighboring obstacles are next to this diagonal path, we need to move around them!
+                            elif idx_dif[1] == dif[1]: 
+                                # add a new temporary goal point to get around the obstacle
+                                path_list[-1][1] = path_list[-1][1] + int(-dif[1] * self.scale)
+                                copy_bool = True
+                            
+                            if copy_bool:
+                                copy_bool = False
+                                self.codeB_prt10_simulator(path_list[-1],last=False)
+                                path_list.append(copy)
 
                 # run robot controller in real time
                 self.codeB_prt10_simulator(path_list[-1],last=True)
@@ -917,8 +942,41 @@ class Grid():
                     open_set.append(p)
 
             # run robot controller in real time
-            self.codeB_prt10_simulator(path_list[-1],last=False)
 
+            # CHECK FOR CORNER COLLISSIONS because we can only see the cells next to us
+
+            # index difference
+            copy = path_list[-1].copy()
+            idx_dif = np.array(path_list[-1]) - np.array(self.crdnt_to_idx([self.x,self.y]))
+            # check if move is diagonal
+            if idx_dif[0] != 0 or idx_dif[1] != 0:
+                # if it is diagonal, check if there are nearby obstacles that we could clip
+                neighbors, occupied = self.find_if_cardinal_neighbors_occupied(self.crdnt_to_idx([self.x,self.y]))  # check if neighbors are occupied
+                for ii in range(len(occupied)):
+                    if occupied[ii] == 1:
+                        dif = np.array((neighbors[ii])) - np.array(self.crdnt_to_idx([self.x,self.y]))
+                        # if any neighboring obstacles are next to this diagonal path, we need to move around them!
+                        if idx_dif[0] == dif[0]:
+                            # add a new temporary goal point to get around the obstacle
+                            path_list[-1][0] = path_list[-1][0] + int(-dif[0])
+                            copy_bool = True
+                        # if any neighboring obstacles are next to this diagonal path, we need to move around them!
+                        elif idx_dif[1] == dif[1]: 
+                            # add a new temporary goal point to get around the obstacle
+                            path_list[-1][1] = path_list[-1][1] + int(-dif[1])
+                            copy_bool = True
+                        
+                        if copy_bool:
+                            copy_bool = False
+                            self.codeB_prt10_simulator(path_list[-1],last=False)
+                            path_list.append(copy)
+
+
+                                
+
+            self.codeB_prt10_simulator(path_list[-1],last=False)
+            # print(f'count:{count}')
+            count+=1
             # visualize at every step if you would like (optional)
             # self.visualize_path_and_simulation(name=f"Real time planning and execution {len(path_list)}")
 
@@ -950,19 +1008,13 @@ class Grid():
         tolerance =  self.scale * 0.1
         distance_error = 10000          
 
-        # check if neighbors are occupied
-        neighbors, occupied = self.find_if_cardinal_neighbors_occupied(cell)
-        for ii in range(len(occupied)):
-            if occupied[ii] == 1:
-                dif = np.array((neighbors[ii])) - np.array((cell))
-                goal += -dif * self.scale * 0.75
-                
         # make sure it gets to the goal coordinate
         if last == True: 
             goal = self.goal                # make sure it goes to goal coordinates
             tolerance = 0.01     # tight tolerance to ensure it reaches goal state
+        
 
-        while(distance_error > tolerance):  
+        while(1):  
                 # run controller, get new velocities
             self.v_vel, self.omega_vel = self.codeB_prt8_controller(goal, [self.x, self.y, self.theta], [self.v_vel, self.omega_vel])
 
@@ -977,6 +1029,9 @@ class Grid():
             self.vel_hist.append([self.v_vel, self.omega_vel])
         
             self.goal_hist.append(goal)
+
+            if distance_error < tolerance:
+                break
 
         if self.prt:    
             print(f'config_hist {np.shape(self.config_hist)}\n')
@@ -1140,7 +1195,6 @@ class Grid():
 
             # calculate distance from goal
             distance_error = np.sqrt((goal[0] - self.x)**2 + (goal[1] - self.y)**2)
-            print(distance_error)
             # save history
             self.config_hist.append([self.x, self.y, self.theta])
             self.vel_hist.append([self.v_vel, self.omega_vel])
@@ -1207,73 +1261,73 @@ class Grid():
 
         
 def main():
-    # g1 = Grid([-2,5],[-6,6],1)
-    # g1.visualize_grid(name='Empty Grid') 
+    g1 = Grid([-2,5],[-6,6],1)
+    g1.visualize_grid(name='Empty Grid') 
 
-    # g1.codeA_part2_Offline(start=[0.5,-1.5],goal=[0.5,1.5])
-    # g1.visualize_path(name='Code A part 3 plot_1')
+    g1.codeA_part2_Offline(start=[0.5,-1.5],goal=[0.5,1.5])
+    g1.visualize_path(name='Code A part 3 plot_1')
 
-    # g1.codeA_part2_Offline(start=[4.5,3.5],goal=[4.5,-1.5])
-    # g1.visualize_path(name='Code A part 3 plot_2')
+    g1.codeA_part2_Offline(start=[4.5,3.5],goal=[4.5,-1.5])
+    g1.visualize_path(name='Code A part 3 plot_2')
 
-    # g1.codeA_part2_Offline(start=[-0.5,5.5],goal=[1.5,-3.5])
-    # g1.visualize_path(name='Code A part 3 plot_3')
+    g1.codeA_part2_Offline(start=[-0.5,5.5],goal=[1.5,-3.5])
+    g1.visualize_path(name='Code A part 3 plot_3')
 
-    # g1.codeA_part4_Online(start=[0.5,-1.5],goal=[0.5,1.5])
-    # g1.visualize_path(name='Code A part 5 plot_1')
+    g1.codeA_part4_Online(start=[0.5,-1.5],goal=[0.5,1.5])
+    g1.visualize_path(name='Code A part 5 plot_1')
 
-    # g1.codeA_part4_Online(start=[4.5,3.5],goal=[4.5,-1.5])
-    # g1.visualize_path(name='Code A part 5 plot_2')
+    g1.codeA_part4_Online(start=[4.5,3.5],goal=[4.5,-1.5])
+    g1.visualize_path(name='Code A part 5 plot_2')
 
-    # g1.codeA_part4_Online(start=[-0.5,5.5],goal=[1.5,-3.5])
-    # g1.visualize_path(name='Code A part 5 plot_3')
+    g1.codeA_part4_Online(start=[-0.5,5.5],goal=[1.5,-3.5])
+    g1.visualize_path(name='Code A part 5 plot_3')
 
-    # g2 = Grid([-2,5],[-6,6],.1)
-    # g2.visualize_grid(name='Empty, higher res Grid') 
+    g2 = Grid([-2,5],[-6,6],.1)
+    g2.visualize_grid(name='Empty, higher res Grid') 
 
-    # g2.codeA_part4_Online(start=[2.45,-3.55],goal=[0.95,-1.55])
-    # g2.visualize_path(name='Code A part 7 plot_1')
+    g2.codeA_part4_Online(start=[2.45,-3.55],goal=[0.95,-1.55])
+    g2.visualize_path(name='Code A part 7 plot_1')
 
-    # g2.codeA_part4_Online(start=[4.95,-0.05],goal=[2.45, 0.25])
-    # g2.visualize_path(name='Code A part 7 plot_2')
+    g2.codeA_part4_Online(start=[4.95,-0.05],goal=[2.45, 0.25])
+    g2.visualize_path(name='Code A part 7 plot_2')
 
-    # g2.codeA_part4_Online(start=[0.55, 1.45],goal=[1.95, 3.95])
-    # g2.visualize_path(name='Code A part 7 plot_3')
+    g2.codeA_part4_Online(start=[0.55, 1.45],goal=[1.95, 3.95])
+    g2.visualize_path(name='Code A part 7 plot_3')
 
-    # g3 = Grid([-2,5],[-6,6],.1)
-    # g3.codeA_part4_Online(start=[2.45,-3.55],goal=[0.95,-1.55])
-    # g3.codeB_prt8_simulator()
-    # g3.visualize_path_and_simulation(name='Code B part 9 plot_1')
-    # g3.codeA_part4_Online(start=[4.95,-0.05],goal=[2.45, 0.25])
-    # g3.codeB_prt8_simulator()
-    # g3.visualize_path_and_simulation(name='Code B part 9 plot_2')
-    # g3.codeA_part4_Online(start=[0.55, 1.45],goal=[1.95, 3.95])
-    # g3.codeB_prt8_simulator()
-    # g3.visualize_path_and_simulation(name='Code B part 9 plot_3')
+    g3 = Grid([-2,5],[-6,6],.1)
+    g3.codeA_part4_Online(start=[2.45,-3.55],goal=[0.95,-1.55])
+    g3.codeB_prt8_simulator()
+    g3.visualize_path_and_simulation(name='Code B part 9 plot_1')
+    g3.codeA_part4_Online(start=[4.95,-0.05],goal=[2.45, 0.25])
+    g3.codeB_prt8_simulator()
+    g3.visualize_path_and_simulation(name='Code B part 9 plot_2')
+    g3.codeA_part4_Online(start=[0.55, 1.45],goal=[1.95, 3.95])
+    g3.codeB_prt8_simulator()
+    g3.visualize_path_and_simulation(name='Code B part 9 plot_3')
 
-    # g4 = Grid([-2,5],[-6,6],.1)
-    # g4.codeB_part10_Online(start=[2.45,-3.55],goal=[0.95,-1.55])
-    # g4.visualize_path_and_simulation(name='Code B part 10 plot_1')
-    # g4.codeB_part10_Online(start=[4.95,-0.05],goal=[2.45, 0.25])
-    # g4.visualize_path_and_simulation(name='Code B part 10 plot_2')
-    # g4.codeB_part10_Online(start=[0.55, 1.45],goal=[1.95, 3.95])
-    # g4.visualize_path_and_simulation(name='Code B part 10 plot_3')
+    g4 = Grid([-2,5],[-6,6],.1)
+    g4.codeB_part10_Online(start=[2.45,-3.55],goal=[0.95,-1.55])
+    g4.visualize_path_and_simulation(name='Code B part 10 plot_1')
+    g4.codeB_part10_Online(start=[4.95,-0.05],goal=[2.45, 0.25])
+    g4.visualize_path_and_simulation(name='Code B part 10 plot_2')
+    g4.codeB_part10_Online(start=[0.55, 1.45],goal=[1.95, 3.95])
+    g4.visualize_path_and_simulation(name='Code B part 10 plot_3')
 
-    # g5 = Grid([-2,5],[-6,6],.1)
-    # g5.codeB_part10_Online(start=[0.5,-1.5],goal=[0.5,1.5])
-    # g5.visualize_path_and_simulation(name='Code B part 11-1 plot_1')
-    # g5.codeB_part10_Online(start=[4.5,3.5],goal=[4.5,-1.5])
-    # g5.visualize_path_and_simulation(name='Code B part 11-1 plot_2')
-    # g5.codeB_part10_Online(start=[-0.5,5.5],goal=[1.5,-3.5])
-    # g5.visualize_path_and_simulation(name='Code B part 11-1 plot_3')
+    g5 = Grid([-2,5],[-6,6],.1)
+    g5.codeB_part10_Online(start=[0.5,-1.5],goal=[0.5,1.5])
+    g5.visualize_path_and_simulation(name='Code B part 11-1 plot_1')
+    g5.codeB_part10_Online(start=[4.5,3.5],goal=[4.5,-1.5])
+    g5.visualize_path_and_simulation(name='Code B part 11-1 plot_2')
+    g5.codeB_part10_Online(start=[-0.5,5.5],goal=[1.5,-3.5])
+    g5.visualize_path_and_simulation(name='Code B part 11-1 plot_3')
 
-    # g6 = Grid([-2,5],[-6,6],1)
-    # g6.codeB_part10_Online(start=[0.5,-1.5],goal=[0.5,1.5])
-    # g6.visualize_path_and_simulation(name='Code B part 11-2 plot_1')
-    # g6.codeB_part10_Online(start=[4.5,3.5],goal=[4.5,-1.5])
-    # g6.visualize_path_and_simulation(name='Code B part 11-2 plot_2')
-    # g6.codeB_part10_Online(start=[-0.5,5.5],goal=[1.5,-3.5])
-    # g6.visualize_path_and_simulation(name='Code B part 11-2 plot_3')
+    g6 = Grid([-2,5],[-6,6],1)
+    g6.codeB_part10_Online(start=[0.5,-1.5],goal=[0.5,1.5])
+    g6.visualize_path_and_simulation(name='Code B part 11-2 plot_1')
+    g6.codeB_part10_Online(start=[4.5,3.5],goal=[4.5,-1.5])
+    g6.visualize_path_and_simulation(name='Code B part 11-2 plot_2')
+    g6.codeB_part10_Online(start=[-0.5,5.5],goal=[1.5,-3.5])
+    g6.visualize_path_and_simulation(name='Code B part 11-2 plot_3')
 
     g7 = Grid([2,5],[-6,6],.1)
     g7.codeB_prt13(start=[2.45,-3.55],goal=[0.95,-1.55],name='CodeB_prt13_plot_1') # success
